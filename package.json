@@ -3,7 +3,7 @@
   "workspaces": [
     "packages/*"
   ],
-  "packageManager": "npm@10.1.0",
+  "packageManager": "pnpm@10.13.1",
   "scripts": {
     "test": "echo 'no tests'"
   }
