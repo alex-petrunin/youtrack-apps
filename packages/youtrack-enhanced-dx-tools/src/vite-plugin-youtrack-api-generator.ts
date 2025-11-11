@@ -1,6 +1,3 @@
----
-to: vite-plugin-youtrack-api-generator.ts
----
 import path from 'node:path';
 import fs from 'fs-extra';
 import glob from 'fast-glob';
@@ -224,10 +221,10 @@ const generateZodSchemas = async (routeFiles: string[]) => {
         const generatedContent = await fs.readFile(apiZodPath, 'utf8');
         
         const buildNestedSchema = (mapping: typeof schemaMapping) => {
-          const result: Record<string, unknown> = {};
+          const result: Record<string, any> = {};
           
           for (const [, info] of Object.entries(mapping)) {
-            let current = result;
+            let current: any = result;
             
             // Navigate/create the nested structure
             for (const segment of info.path) {
@@ -256,7 +253,7 @@ const generateZodSchemas = async (routeFiles: string[]) => {
         const nestedSchema = buildNestedSchema(schemaMapping);
         
         // Generate schema object string without JSON.stringify to preserve object references
-        const generateSchemaObject = (obj: Record<string, unknown>, indent = 0): string => {
+        const generateSchemaObject = (obj: Record<string, any>, indent = 0): string => {
           const spaces = '  '.repeat(indent);
           const entries = Object.entries(obj).map(([key, value]) => {
             if (typeof value === 'string') {

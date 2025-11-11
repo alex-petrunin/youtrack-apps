@@ -1,6 +1,3 @@
----
-to: vite-plugin-youtrack-router.ts
----
 import path from 'node:path';
 import glob from 'fast-glob';
 import {Plugin} from 'vite';
