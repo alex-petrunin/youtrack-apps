@@ -8,21 +8,21 @@ const fieldChanges = require('./workflow-field-changes');
 
 /**
  * Creates a standard guard function for checking webhooks configuration
- * @param {string} settingsKey - The key in ctx.settings to check for webhooks
+ * @param {string} eventType - The event type to check for subscribed endpoints (e.g. 'issueCreated')
  * @param {Function} customCheck - Optional additional check function(ctx) => boolean
  * @returns {Function} Guard function
  */
-function createGuard(settingsKey, customCheck) {
+function createGuard(eventType, customCheck) {
     return function (ctx) {
         // Run custom check first if provided
         if (customCheck && !customCheck(ctx)) {
             return false;
         }
 
-        // Get all webhook URLs (event-specific + "All Events", deduplicated)
-        const allUrls = httpModule.getWebhookUrls(ctx, settingsKey);
+        // Skip when no endpoint is subscribed to this event (incl. "All events").
+        const endpoints = httpModule.getWebhooksForEvent(ctx, eventType);
 
-        if (allUrls.length === 0) {
+        if (endpoints.length === 0) {
             return false;
         }
 

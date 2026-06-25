@@ -1,0 +1,56 @@
+.webhooks-settings {
+  max-width: 860px;
+}
+
+.intro {
+  margin: 0 0 16px;
+  color: var(--ring-secondary-color);
+  line-height: 1.5;
+}
+
+.header-field {
+  max-width: 320px;
+  margin-bottom: 20px;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.webhook-row {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--ring-line-color);
+}
+
+.webhook-fields {
+  display: grid;
+  grid-template-columns: 2fr 1.5fr auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.events {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin-top: 10px;
+}
+
+.events-error {
+  margin-top: 6px;
+  color: var(--ring-error-color);
+  font-size: var(--ring-font-size-smaller, 12px);
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.status {
+  color: var(--ring-secondary-color);
+}

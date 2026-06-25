@@ -12,8 +12,8 @@ const httpModule = require('./workflow-http');
 const guardsModule = require('./workflow-guards');
 const utilsModule = require('./workflow-utils');
 
-exports.parseWebhookUrls = httpModule.parseWebhookUrls;
-exports.getWebhookUrls = httpModule.getWebhookUrls;
+exports.parseWebhooks = httpModule.parseWebhooks;
+exports.getWebhooksForEvent = httpModule.getWebhooksForEvent;
 exports.sendWebhooks = httpModule.sendWebhooks;
 exports.asyncFunctions = httpModule.asyncFunctions;
 

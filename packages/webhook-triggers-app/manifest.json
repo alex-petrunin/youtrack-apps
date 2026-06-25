@@ -10,5 +10,14 @@
     "url": "https://www.jetbrains.com"
   },
   "icon": "icon.svg",
-  "settings": "settings.json"
+  "settings": "settings.json",
+  "widgets": [
+    {
+      "key": "webhooks-settings",
+      "name": "Webhooks",
+      "description": "Manage webhook endpoints, their subscribed events, and per-endpoint signing tokens.",
+      "extensionPoint": "PROJECT_APP_SETTINGS",
+      "indexPath": "widgets/settings/index.html"
+    }
+  ]
 }
