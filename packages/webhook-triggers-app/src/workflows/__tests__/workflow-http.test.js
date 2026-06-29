@@ -18,12 +18,33 @@ const { instances: httpInstances, reset: resetHttp } = httpStub;
 const HEADER = 'X-Token';
 const PAYLOAD = { event: 'test' };
 
-// Builds a ctx whose project settings hold a structured webhook list.
+// Stand-in for the backend's masked secret-map host object: get(id) returns the real token.
+function makeSecretMap(map) {
+  return {
+    get(id) {
+      return Object.prototype.hasOwnProperty.call(map, id) ? map[id] : null;
+    },
+  };
+}
+
+// Builds a ctx whose project settings hold a structured webhook list. Test fixtures still pass each
+// endpoint's token inline as { url, token, events }; this helper assigns a stable id per entry, then
+// splits the data the way the new schema stores it: non-secret { id, url, events } in webhooksJson and
+// the tokens in the write-only webhookSecrets map (empty tokens are omitted, as the widget would).
 function ctxWith(webhooks, { headerName = HEADER } = {}) {
+  const withIds = webhooks.map((w, i) => ({ id: w.id != null ? w.id : 'wh-' + i, ...w }));
+  const secrets = {};
+  withIds.forEach(w => {
+    if (typeof w.token === 'string' && w.token !== '') {
+      secrets[w.id] = w.token;
+    }
+  });
+  const meta = withIds.map(({ id, url, events }) => ({ id, url, events }));
   return createCtx({
     settings: {
       headerName,
-      webhooksJson: JSON.stringify(webhooks),
+      webhooksJson: JSON.stringify(meta),
+      webhookSecrets: makeSecretMap(secrets),
     },
     asyncFunctions,
   });
@@ -60,7 +81,7 @@ describe('getWebhooksForEvent', () => {
       { url: 'https://a.com/', token: 'ta', events: ['issueCreated'] },
       { url: 'https://b.com/', token: 'tb', events: ['issueUpdated'] },
     ]);
-    expect(getWebhooksForEvent(ctx, 'issueCreated')).toEqual([{ url: 'https://a.com/', token: 'ta' }]);
+    expect(getWebhooksForEvent(ctx, 'issueCreated')).toEqual([{ id: 'wh-0', url: 'https://a.com/' }]);
   });
 
   it('includes endpoints subscribed to allEvents', () => {
@@ -68,25 +89,25 @@ describe('getWebhooksForEvent', () => {
       { url: 'https://a.com/', token: 'ta', events: ['issueUpdated'] },
       { url: 'https://b.com/', token: 'tb', events: ['allEvents'] },
     ]);
-    expect(getWebhooksForEvent(ctx, 'issueCreated')).toEqual([{ url: 'https://b.com/', token: 'tb' }]);
+    expect(getWebhooksForEvent(ctx, 'issueCreated')).toEqual([{ id: 'wh-1', url: 'https://b.com/' }]);
   });
 
-  it('deduplicates by URL, first token wins', () => {
+  it('deduplicates by URL, first id wins', () => {
     const ctx = ctxWith([
       { url: 'https://a.com/', token: 'first', events: ['issueCreated'] },
       { url: 'https://a.com/', token: 'second', events: ['allEvents'] },
     ]);
-    expect(getWebhooksForEvent(ctx, 'issueCreated')).toEqual([{ url: 'https://a.com/', token: 'first' }]);
+    expect(getWebhooksForEvent(ctx, 'issueCreated')).toEqual([{ id: 'wh-0', url: 'https://a.com/' }]);
   });
 
-  it('carries each endpoint its own token', () => {
+  it('returns each subscribed endpoint with its id', () => {
     const ctx = ctxWith([
       { url: 'https://a.com/', token: 'ta', events: ['issueCreated'] },
       { url: 'https://b.com/', token: 'tb', events: ['issueCreated'] },
     ]);
     expect(getWebhooksForEvent(ctx, 'issueCreated')).toEqual([
-      { url: 'https://a.com/', token: 'ta' },
-      { url: 'https://b.com/', token: 'tb' },
+      { id: 'wh-0', url: 'https://a.com/' },
+      { id: 'wh-1', url: 'https://b.com/' },
     ]);
   });
 });
@@ -117,7 +138,7 @@ describe('sendWebhooks scheduling', () => {
     expect(conn.calls[0].payload).toBe(JSON.stringify(PAYLOAD));
   });
 
-  it('stores remaining {url, token} entries, payload, and current URL', () => {
+  it('stores remaining {id, url} entries (no token), payload, and current URL', () => {
     const ctx = ctxWith([
       { url: 'https://a.com/', token: 'token-a', events: ['issueCreated'] },
       { url: 'https://b.com/', token: 'token-b', events: ['issueCreated'] },
@@ -125,7 +146,7 @@ describe('sendWebhooks scheduling', () => {
     sendWebhooks(ctx, 'issueCreated', PAYLOAD, 'IssueCreated');
 
     expect(JSON.parse(ctx._storeMap.get('webhookEntries'))).toEqual([
-      { url: 'https://b.com/', token: 'token-b' },
+      { id: 'wh-1', url: 'https://b.com/' },
     ]);
     expect(ctx._storeMap.get('webhookCurrentUrl')).toBe('https://a.com/');
     expect(JSON.parse(ctx._storeMap.get('webhookPayload'))).toEqual(PAYLOAD);

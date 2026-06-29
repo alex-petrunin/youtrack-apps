@@ -6,9 +6,11 @@
  * and so on. Each webhook costs one async hop. Server `maxChainLength = 10` by
  * default, giving the practical cap in {@link MAX_WEBHOOK_URLS_PER_EVENT}.
  *
- * Each webhook carries its OWN signing token (configured per endpoint in the
- * settings widget), so the token travels through the chain state alongside the
- * URL. The shared `headerName` setting names the header the token is sent in.
+ * Each webhook has its OWN signing token, stored in the write-only `webhookSecrets`
+ * map keyed by the endpoint id. Tokens are NEVER written into chain state — only the
+ * endpoint id and URL travel through the chain; the token is resolved from settings
+ * at dispatch time via {@link getToken}. The shared `headerName` setting names the
+ * header the token is sent in.
  */
 
 const http = require('@jetbrains/youtrack-scripting-api/http');
@@ -24,9 +26,26 @@ const STORE_EVENT = 'webhookEvent';
 const STORE_CURRENT_URL = 'webhookCurrentUrl';
 
 /**
+ * Resolves the signing token for an endpoint id from the write-only `webhookSecrets`
+ * map. The map is a host object whose `get(id)` returns an opaque secret value that the
+ * HTTP layer unwraps when set as a header (and which masks itself in logs); a missing id
+ * yields null. Returns null when the setting is absent or the id is unknown.
+ * @param {Object} ctx - The workflow context with settings
+ * @param {string} id - The endpoint id
+ * @returns {*} The token value to pass to the HTTP header, or null
+ */
+function getToken(ctx, id) {
+  const secrets = ctx.settings.webhookSecrets;
+  if (!id || !secrets || typeof secrets.get !== 'function') {
+    return null;
+  }
+  return secrets.get(id);
+}
+
+/**
  * Parses the structured webhook list from project settings.
  * @param {Object} ctx - The workflow context with settings
- * @returns {Array<{url: string, token: string, events: Array<string>}>} Parsed webhooks (best-effort)
+ * @returns {Array<{id: string, url: string, events: Array<string>}>} Parsed webhooks (best-effort)
  */
 function parseWebhooks(ctx) {
   const raw = ctx.settings.webhooksJson;
@@ -51,10 +70,11 @@ function parseWebhooks(ctx) {
 /**
  * Returns the deduplicated endpoints subscribed to the given event type.
  * A webhook subscribes to an event when its `events` array contains the event
- * type or the catch-all `allEvents`. Deduplicated by URL (first token wins).
+ * type or the catch-all `allEvents`. Deduplicated by URL (first id wins). The token is
+ * NOT included here — it is resolved by id at dispatch time via {@link getToken}.
  * @param {Object} ctx - The workflow context with settings
  * @param {string} eventType - Event type identifier (e.g. 'issueCreated')
- * @returns {Array<{url: string, token: string}>} Endpoints for this event
+ * @returns {Array<{id: string, url: string}>} Endpoints for this event
  */
 function getWebhooksForEvent(ctx, eventType) {
   const webhooks = parseWebhooks(ctx);
@@ -72,7 +92,7 @@ function getWebhooksForEvent(ctx, eventType) {
       return;
     }
     seen[url] = true;
-    result.push({url: url, token: typeof w.token === 'string' ? w.token : ''});
+    result.push({id: w.id, url: url});
   });
 
   return result;
@@ -105,9 +125,9 @@ function logWebhookResponse(response, url) {
 /**
  * Validates an endpoint, persists post-dispatch state, then fires postAsync with
  * `logAndPostNext` as the response handler. Stores BEFORE scheduling per the
- * async-functions "store before invoke" guidance. Fails closed: an endpoint with
- * no token is skipped rather than sent unauthenticated.
- * @param {{url: string, token: string}} entry - The endpoint to dispatch
+ * async-functions "store before invoke" guidance. Fails closed: an endpoint whose
+ * token can no longer be resolved is skipped rather than sent unauthenticated.
+ * @param {{id: string, url: string}} entry - The endpoint to dispatch
  * @returns {boolean} true on scheduled, false on rejection (caller may try the next).
  */
 function tryPostWebhook(ctx, entry, remaining, headerName, payloadJson) {
@@ -118,7 +138,8 @@ function tryPostWebhook(ctx, entry, remaining, headerName, payloadJson) {
     return false;
   }
 
-  if (!entry.token) {
+  const token = getToken(ctx, entry.id);
+  if (!token) {
     console.warn('[webhooks] No token configured for ' + url + ' — skipping (fail closed)');
     return false;
   }
@@ -133,7 +154,7 @@ function tryPostWebhook(ctx, entry, remaining, headerName, payloadJson) {
   try {
     const connection = new http.Connection(url, null, WEBHOOK_TIMEOUT_MS);
     connection.addHeader('Content-Type', 'application/json');
-    security.addSecurityHeaders(connection, entry.token, headerName);
+    security.addSecurityHeaders(connection, token, headerName);
     connection.postAsync('', '', payloadJson, 'logAndPostNext');
     return true;
   } catch (error) {
@@ -212,7 +233,7 @@ function sendWebhooks(ctx, eventType, payload, eventName) {
       console.error('[webhooks] Blocked webhook to ' + entry.url + ': ' + validation.reason);
       return false;
     }
-    if (!entry.token) {
+    if (!getToken(ctx, entry.id)) {
       console.warn('[webhooks] No token configured for ' + entry.url + ' — skipping (fail closed)');
       return false;
     }
@@ -242,6 +263,7 @@ const asyncFunctions = {
   logAndPostNext: logAndPostNext,
 };
 
+exports.getToken = getToken;
 exports.parseWebhooks = parseWebhooks;
 exports.getWebhooksForEvent = getWebhooksForEvent;
 exports.sendWebhooks = sendWebhooks;

@@ -6,10 +6,20 @@
   "properties": {
     "webhooksJson": {
       "title": "Webhooks",
-      "description": "JSON-encoded list of webhook endpoints, each with its own URL, signing token, and subscribed events. Managed by the Webhooks settings widget — the YouTrack settings schema only allows entity-backed arrays, so this structured list is stored as a JSON string. Field validation (required URL, token min length, event selection) lives in the widget, since the schema cannot validate values inside this string.",
+      "description": "JSON-encoded list of webhook endpoints, each with a stable id, URL, and subscribed events. Signing tokens are NOT stored here — they live in the write-only `webhookSecrets` setting, keyed by endpoint id. Managed by the Webhooks settings widget; the YouTrack settings schema only allows entity-backed arrays, so this non-secret structured list is stored as a JSON string.",
       "type": "string",
       "x-scope": "PROJECT",
       "default": "[]"
+    },
+    "webhookSecrets": {
+      "title": "Webhook signing tokens",
+      "description": "Per-endpoint signing tokens, keyed by the webhook id from `webhooksJson`. Stored as a write-only secret map: values are masked on read and merged per-key on write, so a token cannot be read back after it is saved, and re-saving without re-typing keeps the stored value.",
+      "type": "object",
+      "format": "secretMap",
+      "x-scope": "PROJECT",
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "headerName": {
       "title": "Header name",

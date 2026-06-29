@@ -16,20 +16,29 @@ declare const YTApp: {
   register: () => Promise<HostApi>;
 };
 
+// Non-secret endpoint metadata, stored as a JSON string in `webhooksJson`. The signing token is
+// NOT here — it lives in the write-only `webhookSecrets` map, keyed by `id`.
 interface Webhook {
+  id?: string;
   url?: string;
-  token?: string;
   events?: string[];
 }
 
 interface SettingsConfig {
   webhooksJson?: string;
+  // Per-endpoint signing tokens keyed by webhook id. On read each value is masked ("<***>"); on write
+  // a value of MASK keeps the stored token, a real value replaces it, and omitted ids are dropped.
+  webhookSecrets?: Record<string, string>;
   headerName?: string;
 }
 
 interface Row {
+  id: string;
   url: string;
+  /** Token typed in this session. Empty means "unchanged" when {@link hasSavedSecret} is true. */
   token: string;
+  /** True when a token is already stored for this id (we can never read its value back). */
+  hasSavedSecret: boolean;
   events: string[];
   rowKey: string;
 }
@@ -52,10 +61,16 @@ const EVENT_OPTIONS = [
 
 const DEFAULT_HEADER = 'X-YouTrack-Token';
 
-// Minimum signing-token length. The old JSON-schema form enforced this via `minLength` on the
-// secret field (JT-95004); now that endpoints live in a JSON-string setting the schema can't reach,
-// validation lives here in the custom widget instead.
+// The mask placeholder YouTrack returns for a stored secretMap value, and which we send back to keep
+// an unchanged token. Must match SecretAttributeValue.MASK on the backend.
+const SECRET_MASK = '<***>';
+
+// Minimum signing-token length. The old JSON-schema form enforced this via `minLength` on the secret
+// field (JT-95004); endpoints now live in a JSON-string + secretMap the schema can't reach, so the
+// length check lives here in the widget instead.
 const TOKEN_MIN_LENGTH = 32;
+
+const newId = () => crypto.randomUUID();
 
 interface RowErrors {
   url?: string;
@@ -71,8 +86,11 @@ function validateRow(row: Row): RowErrors {
   } else if (!/^https?:\/\//i.test(url)) {
     errors.url = 'Enter a valid http(s) URL';
   }
+  // A token is required only when none is stored yet. If one is saved, an empty field means "keep it".
   if (!row.token) {
-    errors.token = 'Signing token is required';
+    if (!row.hasSavedSecret) {
+      errors.token = 'Signing token is required';
+    }
   } else if (row.token.length < TOKEN_MIN_LENGTH) {
     errors.token = `Token must be at least ${TOKEN_MIN_LENGTH} characters`;
   }
@@ -82,9 +100,22 @@ function validateRow(row: Row): RowErrors {
   return errors;
 }
 
-const newRowKey = () => crypto.randomUUID();
+// Builds the secret map to submit: a freshly typed token replaces the stored one; an empty field with
+// an existing secret sends the mask so the backend keeps it; rows with neither are skipped (blocked by
+// validation). Endpoints removed from `rows` are omitted — the backend's per-key merge drops them.
+function buildWebhookSecrets(rows: Row[]): Record<string, string> {
+  const secrets: Record<string, string> = {};
+  for (const row of rows) {
+    if (row.token) {
+      secrets[row.id] = row.token;
+    } else if (row.hasSavedSecret) {
+      secrets[row.id] = SECRET_MASK;
+    }
+  }
+  return secrets;
+}
 
-function parseRows(json: string | undefined): Row[] {
+function parseRows(json: string | undefined, savedSecretIds: Set<string>): Row[] {
   if (!json) {
     return [];
   }
@@ -93,12 +124,17 @@ function parseRows(json: string | undefined): Row[] {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    return parsed.map(w => ({
-      url: w.url ?? '',
-      token: w.token ?? '',
-      events: Array.isArray(w.events) ? w.events : [],
-      rowKey: newRowKey(),
-    }));
+    return parsed.map(w => {
+      const id = w.id ?? newId();
+      return {
+        id,
+        url: w.url ?? '',
+        token: '',
+        hasSavedSecret: savedSecretIds.has(id),
+        events: Array.isArray(w.events) ? w.events : [],
+        rowKey: id,
+      };
+    });
   } catch {
     return [];
   }
@@ -117,7 +153,9 @@ const AppComponent: React.FunctionComponent = () => {
       setHost(h);
       const config = ((await h.readConfig()) ?? {}) as SettingsConfig;
       setHeaderName(config.headerName || DEFAULT_HEADER);
-      setRows(parseRows(config.webhooksJson));
+      // The secret map comes back masked; its keys tell us which endpoints already have a token.
+      const savedSecretIds = new Set(Object.keys(config.webhookSecrets ?? {}));
+      setRows(parseRows(config.webhooksJson, savedSecretIds));
       setLoading(false);
     })();
   }, []);
@@ -127,7 +165,11 @@ const AppComponent: React.FunctionComponent = () => {
   }, []);
 
   const addRow = useCallback(
-    () => setRows(prev => [...prev, {url: '', token: '', events: [], rowKey: newRowKey()}]),
+    () =>
+      setRows(prev => {
+        const id = newId();
+        return [...prev, {id, url: '', token: '', hasSavedSecret: false, events: [], rowKey: id}];
+      }),
     [],
   );
 
@@ -156,8 +198,14 @@ const AppComponent: React.FunctionComponent = () => {
     }
     setStatus('Saving…');
     try {
-      const webhooks: Webhook[] = rows.map(({url, token, events}) => ({url, token, events}));
-      await host.storeConfig({webhooksJson: JSON.stringify(webhooks), headerName} satisfies SettingsConfig);
+      const webhooks: Webhook[] = rows.map(({id, url, events}) => ({id, url, events}));
+      await host.storeConfig({
+        webhooksJson: JSON.stringify(webhooks),
+        webhookSecrets: buildWebhookSecrets(rows),
+        headerName,
+      } satisfies SettingsConfig);
+      // After a successful save every row now has a stored secret; clear typed values and mark saved.
+      setRows(prev => prev.map(row => ({...row, token: '', hasSavedSecret: true})));
       setStatus('✓ Saved');
     } catch (e) {
       setStatus(`Save failed: ${e instanceof Error ? e.message : 'error'}`);
@@ -172,8 +220,8 @@ const AppComponent: React.FunctionComponent = () => {
     <div className="webhooks-settings">
       <p className="intro">
         Configure webhook endpoints for {YTApp.entity?.type === 'project' ? 'this project' : 'this app'}. Each
-        endpoint has its own signing token, sent in the header below. Tokens are stored in YouTrack and, thanks to
-        the widget&apos;s Content-Security-Policy, can never be sent to any other host.
+        endpoint has its own signing token, sent in the header below. Tokens are stored in YouTrack as write-only
+        secrets — they are masked once saved and can never be read back or sent to any other host.
       </p>
 
       <div className="header-field">
@@ -201,6 +249,7 @@ const AppComponent: React.FunctionComponent = () => {
                 size={Size.FULL}
                 label="Signing token"
                 type="password"
+                placeholder={row.hasSavedSecret ? 'Saved — leave blank to keep' : ''}
                 value={row.token}
                 error={rowErrors[i]?.token}
                 onChange={e => updateRow(i, {token: e.target.value})}
