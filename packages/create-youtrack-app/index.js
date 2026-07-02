@@ -681,6 +681,67 @@ function runGeneratedFilesLintFix(files) {
     return runHygen();
   }
 
+  // Non-interactive scaffold gate: `--name` with no subcommand bypasses every prompt
+  // and runs `init` directly. Mirrors the widget/handler flag-form pattern — the bare
+  // invocation (no --name) stays fully interactive for humans (backward-compatible).
+  if (args.name !== undefined) {
+    const appName = String(args.name);
+
+    // Reuse the exact widget-key validation style for the app name.
+    if (!/^[a-z][a-z0-9-]*$/.test(appName)) {
+      console.error(styleText("red", `Invalid app name: "${appName}". Must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens.`));
+      process.exit(1);
+    }
+
+    const appType = args.type != null ? String(args.type) : 'ts';
+    if (!['js', 'ts'].includes(appType)) {
+      console.error(styleText("red", `Invalid type: "${appType}". Must be one of: js, ts`));
+      process.exit(1);
+    }
+
+    const title = args.title != null
+      ? String(args.title)
+      : appName.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    const description = args.description != null
+      ? String(args.description)
+      : `A YouTrack app created with ${appType === 'ts' ? 'TypeScript' : 'JavaScript'}`;
+    const vendor = args.vendor != null ? String(args.vendor) : 'VendorName';
+    const vendorUrl = args['vendor-url'] != null ? String(args['vendor-url']) : 'https://vendor.com';
+
+    const templateName = appType === 'js' ? 'vite-app' : 'enhanced-dx';
+
+    console.log(styleText("cyan", `\nScaffolding ${appType === 'ts' ? 'Enhanced DX' : 'JavaScript'} app "${appName}"...\n`));
+    const appRes = await runHygen(["init", templateName, "--appName", appName, "--title", title, "--description", description, "--vendor", vendor, "--vendorUrl", vendorUrl]);
+    if (!appRes.success) {
+      process.exitCode = 1;
+      return;
+    }
+
+    // `--no-install` → minimist sets args.install === false
+    if (args.install === false) {
+      console.log(styleText("green", `\n✓ App "${appName}" scaffolded. Dependencies not installed (--no-install). Run "npm install" in the app directory.\n`));
+      return;
+    }
+
+    const toolsPackageDir = path.join(__dirname, '..', 'apps-tools');
+    const isLocalWorkspace = fs.existsSync(toolsPackageDir);
+
+    console.log(styleText("bold", '\nInstalling dependencies...\n'));
+    if (isLocalWorkspace) {
+      // Local monorepo clone — link local builds instead of pulling from npm.
+      const installProcess = execa("npm", ["link", "@jetbrains/youtrack-apps-tools", "@jetbrains/youtrack-workflow-types"], {cwd});
+      installProcess.stdout.pipe(process.stdout);
+      await installProcess;
+    } else {
+      const installProcess = execa("npm", ["install"], {cwd});
+      installProcess.stdout.pipe(process.stdout);
+      await installProcess;
+    }
+
+    console.log(styleText("green", `\n✓ App "${appName}" created and dependencies installed.\n`));
+    return;
+  }
+
   const pkgPath = path.join(cwd, 'package.json');
   const hasPkg = fs.existsSync(pkgPath);
   if (hasPkg) {
