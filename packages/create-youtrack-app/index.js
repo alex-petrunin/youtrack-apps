@@ -710,8 +710,13 @@ function runGeneratedFilesLintFix(files) {
 
     const templateName = appType === 'js' ? 'vite-app' : 'enhanced-dx';
 
-    console.log(styleText("cyan", `\nScaffolding ${appType === 'ts' ? 'Enhanced DX' : 'JavaScript'} app "${appName}"...\n`));
-    const appRes = await runHygen(["init", templateName, "--appName", appName, "--title", title, "--description", description, "--vendor", vendor, "--vendorUrl", vendorUrl]);
+    // `--backend-only` scaffolds a widget-less Enhanced DX app (no src/widgets/, no
+    // manifest widgets key, frontend-free build scripts). Only meaningful for --type ts;
+    // the js/vite-app scaffold is already widget-less, so the flag is a silent no-op there.
+    const backendOnly = appType === 'ts' && (args['backend-only'] === true || args['backend-only'] === 'true');
+
+    console.log(styleText("cyan", `\nScaffolding ${appType === 'ts' ? 'Enhanced DX' : 'JavaScript'} app "${appName}"${backendOnly ? ' (backend-only)' : ''}...\n`));
+    const appRes = await runHygen(["init", templateName, "--appName", appName, "--title", title, "--description", description, "--vendor", vendor, "--vendorUrl", vendorUrl, "--backendOnly", String(backendOnly)]);
     if (!appRes.success) {
       process.exitCode = 1;
       return;
@@ -960,7 +965,9 @@ function runGeneratedFilesLintFix(files) {
   const vendorUrl = 'https://vendor.com';
 
   const templateName = appType === 'js' ? 'vite-app' : 'enhanced-dx';
-  const appRes = await runHygen(["init", templateName, "--appName", appName, "--title", title, "--description", description, "--vendor", vendor, "--vendorUrl", vendorUrl, ...argv]);
+  // Honor `--backend-only` for ts here too so the `backendOnly` template local is always defined.
+  const backendOnly = appType === 'ts' && (args['backend-only'] === true || args['backend-only'] === 'true');
+  const appRes = await runHygen(["init", templateName, "--appName", appName, "--title", title, "--description", description, "--vendor", vendor, "--vendorUrl", vendorUrl, ...argv, "--backendOnly", String(backendOnly)]);
   if (!appRes.success) {
     return;
   }

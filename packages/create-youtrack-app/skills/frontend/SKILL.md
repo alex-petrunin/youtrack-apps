@@ -32,7 +32,7 @@ An app has two halves:
 | panel, dashboard, settings UI, issue/article surface, button in YouTrack | **Yes** | Continue with this skill. |
 | workflow, scheduled job, webhook, REST handler, SLA, AI tool, "backend only" | **No** | Do **not** open `src/widgets/` or `index.html`. The scaffold may include a sample widget — leave it untouched, or remove its `src/widgets/<key>/` folder and its `manifest.json` `widgets[]` entry. Do the backend work; skip the frontend files entirely. |
 
-Backend-only apps are legitimate. Not every app has a widget. Don't invent one because the scaffold shipped a sample.
+Backend-only apps are legitimate. Not every app has a widget. Don't invent one because the scaffold shipped a sample. When creating a new app you already know is backend-only, scaffold it with `--backend-only` (§3) so no widget ships in the first place.
 
 ## 2. Mental model
 
@@ -51,6 +51,7 @@ npx @jetbrains/create-youtrack-app --name my-app --type ts
 ```
 
 - **why `--type`:** `ts` → Enhanced DX (file-based routing, type-safe `@/api` client, sample widget). `js` → basic vite-app (flat `src/backend.js`, no generated client, no sample widget). The two are structurally different — pick per §6.
+- **`--backend-only`** (ts only): scaffold a widget-less app — no `src/widgets/`, no `index.html`, `manifest.json` with no `widgets` key, frontend-free build scripts. Use when the app has no UI at all (pure workflows / handlers / rules). No-op for `--type js` (already frontend-less).
 - Optional: `--title`, `--description`, `--vendor`, `--vendor-url`, `--no-install`.
 - `--name` must match `^[a-z][a-z0-9-]*$`. Bare invocation (no `--name`) stays interactive.
 
