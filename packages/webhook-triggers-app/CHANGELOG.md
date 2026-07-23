@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## 1.1.0 (2026-07-14)
+
+
+### Features
+
+* **webhook-triggers-app:** JT-97413 move settings to a `triggers` array — one `{event, url, secret}` row per endpoint, each with its own token, replacing the per-event URL textareas and the single shared token. Closes the single-shared-token issue ([JT-95028](https://youtrack.jetbrains.com/issue/JT-95028)).
+
 ## 1.0.5 (2026-03-27)
 
 

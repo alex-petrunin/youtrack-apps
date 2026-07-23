@@ -7,64 +7,46 @@ Trigger external webhooks from YouTrack events such as issue creation, updates, 
 ## Features
 
 - **Multiple Event Types**: Issue (create/update/delete), Comments (add/update/delete), Work Items (add/update/delete), Attachments (add/delete)
-- **Multiple Webhooks**: Send to multiple URLs per event (comma or newline separated)
+- **Per-endpoint triggers**: One row per endpoint — pick the event, enter the URL, set that endpoint's own token. A compromised endpoint never exposes the others.
 
 
 ## Configuration
 
 ### Step 1: Generate a Secure Secret
 
-The webhook token is required for security. Generate a strong random secret:
+Each trigger carries its own token. Generate a strong random secret per endpoint:
 
 ```bash
 # Generate a 64-character hex secret (recommended)
 openssl rand -hex 32
 ```
 
-**Important**: 
+**Important**:
 - Minimum 32 characters required
-- Keep this secret secure - treat it like a password
-- Use the same secret in your webhook receiver (e.g., n8n)
+- Keep each secret secure - treat it like a password
+- Use the same secret in the matching webhook receiver (e.g., n8n)
 
 ### Step 2: Configure Project Settings
 
 1. Navigate to your project in YouTrack
 2. Go to **Settings** > **Apps** > **Webhook Triggers**
-3. Configure the following:
+3. Set the shared **Header name** (default `X-YouTrack-Token`) — the HTTP header each token is sent in.
+4. Add one **Trigger** row per endpoint.
 
-#### 2.1. Webhook Token (Required)
-- Paste the secret generated in Step 1
-- This must match the secret configured in your webhook receiver
-- Minimum 32 characters
+#### 2.1. Triggers
 
-#### 2.2. Event-Specific Webhooks
+Each row is one endpoint with three fields:
 
-Configure webhook URLs for specific events:
+- **Event**: which YouTrack event fires this webhook. One of:
+  - **Issue Created / Updated / Deleted**
+  - **Comment Added / Updated / Deleted**
+  - **Work Item Added / Updated / Deleted**
+  - **Attachment Added / Deleted**
+  - **All events** — fires on every event type (useful for centralized logging, backups, analytics)
+- **URL**: the endpoint that receives the event payload. HTTPS strongly recommended — the token is sent with every request. Example: `https://n8n.example.com/webhook/abc123/webhook`
+- **Token**: the shared secret sent to *this* endpoint in the configured header. Minimum 32 characters. A row with no token is skipped (never sent unauthenticated).
 
-- **Issue Created**: Triggered when a new issue is created
-- **Issue Updated**: Triggered when an issue is modified
-- **Issue Deleted**: Triggered when an issue is deleted
-- **Comment Added**: Triggered when a comment is added
-- **Comment Updated**: Triggered when a comment is edited
-- **Comment Deleted**: Triggered when a comment is removed
-- **Work Item Added**: Triggered when time is logged
-- **Work Item Updated**: Triggered when a work item is modified
-- **Work Item Deleted**: Triggered when a work item is removed
-- **Attachment Added**: Triggered when a file is attached
-- **Attachment Deleted**: Triggered when an attachment is removed
-
-**Format**: Enter one or more webhook URLs:
-- Multiple URLs: Separate with commas or newlines
-- Example: `https://n8n.example.com/webhook/abc123/webhook`
-
-#### 2.3. Catch-All Webhooks
-
-**All Events**: URLs that receive all events regardless of type
-
-This is useful for:
-- Centralized logging
-- Backup webhooks
-- Analytics systems
+Add multiple rows to fan out to several endpoints, including several rows for the same event with different URLs and tokens. Duplicate URLs are de-duplicated per event, with the event-specific row taking precedence over an **All events** row.
 
 ### Step 3: Configure Your Webhook Receiver
 
