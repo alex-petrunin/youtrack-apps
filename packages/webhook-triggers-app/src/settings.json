@@ -39,6 +39,20 @@
               "issueAttachmentAdded",
               "issueAttachmentDeleted",
               "allEvents"
+            ],
+            "enumNames": [
+              "Issue Created",
+              "Issue Updated",
+              "Issue Deleted",
+              "Comment Added",
+              "Comment Updated",
+              "Comment Deleted",
+              "Work Item Added",
+              "Work Item Updated",
+              "Work Item Deleted",
+              "Attachment Added",
+              "Attachment Deleted",
+              "All Events"
             ]
           },
           "url": {
