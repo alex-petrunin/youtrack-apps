@@ -15,7 +15,7 @@
     },
     "triggers": {
       "title": "Triggers",
-      "description": "One row per webhook endpoint. Each row has its own token, so a compromised endpoint never exposes the others.",
+      "description": "One row per webhook endpoint. Each row has its own token, so a compromised endpoint never exposes the others. At most 10 endpoints are called for any single event; beyond that the extra rows for that event are skipped and a warning is logged.",
       "type": "array",
       "x-scope": "PROJECT",
       "items": {

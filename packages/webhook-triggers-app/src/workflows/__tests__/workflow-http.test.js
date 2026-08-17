@@ -112,7 +112,9 @@ describe('resolveTriggerSecret', () => {
     expect(resolveTriggerSecret(ctx, 'issueCreated', 'https://a.com/')).toBe(secretObj);
   });
 
-  it('honors event-specific precedence over allEvents for the same url', () => {
+  // Precedence is list order, not specificity: the first matching row wins, so an allEvents row
+  // placed above this one would be the one resolved.
+  it('resolves the first matching row for the same url', () => {
     const ctx = createCtx({
       settings: {
         triggers: [

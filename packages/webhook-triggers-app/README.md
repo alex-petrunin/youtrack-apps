@@ -46,7 +46,7 @@ Each row is one endpoint with three fields:
 - **URL**: the endpoint that receives the event payload. HTTPS strongly recommended — the token is sent with every request. Example: `https://n8n.example.com/webhook/abc123/webhook`
 - **Token**: the shared secret sent to *this* endpoint in the configured header. Minimum 32 characters. A row with no token is skipped (never sent unauthenticated).
 
-Add multiple rows to fan out to several endpoints, including several rows for the same event with different URLs and tokens. Duplicate URLs are de-duplicated per event, with the event-specific row taking precedence over an **All events** row.
+Add multiple rows to fan out to several endpoints, including several rows for the same event with different URLs and tokens. Duplicate URLs are de-duplicated per event, and the row that wins is the first one in the list that matches — so put a row for a specific event above any **All events** row that names the same URL. At most 10 endpoints are called for any one event.
 
 ### Step 3: Configure Your Webhook Receiver
 
@@ -244,20 +244,44 @@ The header name is configurable (defaults to `X-YouTrack-Token`) and contains yo
 
 ## Limitations
 
-### No Connection Timeout Control
-If a webhook endpoint is slow or unresponsive, the workflow will block until
-YouTrack's internal timeout (platform-controlled) is reached.
+### At most 10 endpoints per event
 
-**Recommendation:** Ensure your webhook endpoints respond within 2 seconds,
-or use a fast intermediary service that acknowledges immediately and processes
-asynchronously.
+Delivery runs as an async function chain: the rule dispatches the first URL, and each response
+handler dispatches the next. Every URL costs one async hop, and the server's `maxChainLength` is 10
+by default — so **at most 10 endpoints are called for any single event**. If more rows match one
+event (its own rows plus any **All events** rows), the extras are skipped and a warning is logged:
 
-### Synchronous Webhook Delivery
+```
+[webhooks] 12 valid triggers configured for Issue Created but max is 10 per event
+(async chain limit). Extra triggers dropped.
+```
 
-YouTrack workflows execute synchronously, meaning each webhook is sent
-sequentially and blocks until the endpoint responds. 
+The cap is per event, not per app: one row for each of the 11 event types stays well inside it, and
+the number of rows overall is not limited.
 
-**Best practice:** limit the number of webhook URLs per event.
+### 5 second timeout per request
+
+Each request is given 5 seconds. A slower endpoint gets no status code, which is logged as a
+timeout, and the chain moves on to the next URL — one slow receiver does not stop the others.
+
+**Recommendation:** have endpoints acknowledge immediately and do their work asynchronously.
+
+### Delivery is not retried
+
+A failed or timed-out webhook is logged and dropped; nothing re-sends it. Endpoints that need
+guaranteed delivery should sit behind a queue that owns the retrying.
+
+### One request per endpoint per event
+
+Duplicate URLs are de-duplicated per event, so an endpoint listed twice for one event is called
+once. The token it is called with comes from **the first matching row in the list** — which is a
+question of row order, not of how specific the row is: an **All events** row placed above an
+event-specific row for the same URL is the one whose token is used. Keep the specific row first.
+
+### A row without a token is skipped
+
+Rather than send an unauthenticated request, a row whose token is empty is skipped with a warning.
+The same applies to the whole chain if **Header name** is cleared while it is running.
 
 ## Credits
 

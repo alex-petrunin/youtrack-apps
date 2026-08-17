@@ -25,10 +25,6 @@ const {ALL_EVENTS_TYPE} = require('./constants');
 const WEBHOOK_TIMEOUT_MS = 5000;
 const MAX_WEBHOOK_URLS_PER_EVENT = 10;
 
-// Toggle to log the runtime shape of the triggers setting (regression check for
-// JT-97417 object-array rule exposure). Keep false in normal operation.
-const TRIGGERS_SHAPE_DIAG = false;
-
 const STORE_URLS = 'webhookUrls';
 const STORE_EVENT_TYPE = 'webhookEventType';
 const STORE_PAYLOAD = 'webhookPayload';
@@ -136,16 +132,6 @@ function rowMatchesEvent(row, eventType) {
  */
 function getWebhookTargets(ctx, eventType) {
   const rows = toRows(ctx.settings.triggers);
-
-  // Regression probe: flip TRIGGERS_SHAPE_DIAG to true to log how the runtime
-  // exposes the object-array setting (should be a readable JS array). One line;
-  // used to catch a regression of the JT-97417 rule-exposure fix.
-  if (TRIGGERS_SHAPE_DIAG) {
-    const t = ctx.settings.triggers;
-    console.log('[webhooks][diag] triggers isArray=' + Array.isArray(t) +
-      ' rowCount=' + rows.length +
-      ' firstEvent=' + (rows.length ? rowField(rows[0], 'event') : 'n/a'));
-  }
 
   const seen = {};
   const urls = [];
